@@ -14,33 +14,6 @@
         }
         .container {
             margin-top: 30px;
-            position: relative;
-        }
-        .top-right-box {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 300px;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            background-color: #ffffff;
-            padding: 15px;
-        }
-        .card {
-            margin-bottom: 20px;
-            border-radius: 15px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-        }
-        .btn-primary {
-            background-color: #007bff;
-            border-color: #007bff;
-        }
-        .btn-primary:hover {
-            background-color: #0056b3;
-        }
-        .results-container {
-            margin-top: 30px;
         }
         .log-box {
             margin-top: 20px;
@@ -51,24 +24,30 @@
             max-height: 200px;
             overflow-y: auto;
         }
+        .order-status {
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1 class="text-center mb-4">Nearby Restaurants Finder</h1>
         <div class="text-center">
-            <button class="btn btn-primary btn-lg" onclick="fetchRestaurants()">Find Restaurants</button>
+            <button class="btn btn-primary btn-lg" onclick="fetchRestaurantAndOrder()">Find Restaurants</button>
         </div>
         <div id="user-location" class="mt-4">
             <h2 class="text-muted">Your Location:</h2>
             <p id="coordinates" class="text-info">Fetching your location...</p>
         </div>
-        <div id="closest-restaurant" class="top-right-box d-none">
-            <h4>Closest Restaurant</h4>
-            <div id="closest-restaurant-details"></div>
+
+        <div id="closest-restaurant" class="mt-4">
+            <h2 class="text-muted">Closest Restaurant:</h2>
+            <p id="restaurant" class="text-info">Fetching closest restaurant...</p>
         </div>
-        <div id="results" class="results-container"></div>
-        <div id="mock-orders-log" class="log-box"></div>
+
+        <div id="mock-orders-log" class="log-box">
+            <h4>Mock Orders</h4>
+        </div>
     </div>
 
     <!-- Bootstrap JS -->
@@ -83,8 +62,6 @@
                     function (position) {
                         latitude = position.coords.latitude;
                         longitude = position.coords.longitude;
-
-                        // Display user's location
                         document.getElementById('coordinates').innerText = `Your Location: ${latitude}, ${longitude}`;
                     },
                     function (error) {
@@ -98,15 +75,30 @@
             }
         };
 
-        function fetchRestaurants() {
+        // Determine meal type based on the time
+        function getMealType() {
+            const currentHour = new Date().getHours();
+            canOrder = true;
+            return 'Breakfast';
+            if (currentHour >= 6 && currentHour <= 10 || canOrder) return 'Breakfast';
+            if (currentHour >= 12 && currentHour <= 15 || canOrder) return 'Lunch';
+            if (currentHour >= 18 && currentHour <= 21 || canOrder) return 'Dinner';
+            return 'None'; // Outside meal hours
+        }
+
+        // Fetch restaurant and place a single order
+        function fetchRestaurantAndOrder() {
             if (!latitude || !longitude) {
                 alert('Location not yet determined. Please wait.');
                 return;
             }
 
-            const radius = 5000; // Example: 5 km
+            const mealType = getMealType();
+            if (mealType === 'None') {
+                alert('No meal orders can be placed at this time.');
+                return;
+            }
 
-            // Send data to the backend
             fetch('/get_nearby_restaurants', {
                 method: 'POST',
                 headers: {
@@ -115,81 +107,74 @@
                 body: JSON.stringify({
                     latitude: latitude,
                     longitude: longitude,
-                    radius: radius
+                    radius: 5000 // Example radius: 5 km
                 })
             })
                 .then(response => response.json())
                 .then(data => {
-                    // Display the closest restaurant
-                    const closestRestaurantDiv = document.getElementById('closest-restaurant');
-                    closestRestaurantDiv.classList.remove('d-none');
-                    const closestDetails = `
-                        <strong>${data.closest_restaurant.name}</strong><br>
-                        Rating: ${data.closest_restaurant.rating}<br>
-                        Vicinity: ${data.closest_restaurant.vicinity}<br>
-                        Distance: ${data.closest_restaurant.distance} km
-                    `;
-                    document.getElementById('closest-restaurant-details').innerHTML = closestDetails;
+                    const closestRestaurant = data.closest_restaurant;
+                    document.getElementById('restaurant').innerText = closestRestaurant.name;
 
-                    // Display all restaurants
-                    const resultsDiv = document.getElementById('results');
-                    resultsDiv.innerHTML = `
-                        <h2 class="mt-4">Nearby Restaurants</h2>
-                        <div class="row">
-                            ${data.restaurant_list
-                                .map(
-                                    rest =>
-                                        `<div class="col-md-4">
-                                            <div class="card">
-                                                <div class="card-body">
-                                                    <h5 class="card-title">${rest.name}</h5>
-                                                    <p class="card-text">
-                                                        <strong>Rating:</strong> ${rest.rating}<br>
-                                                        <strong>Vicinity:</strong> ${rest.vicinity}<br>
-                                                        <strong>Distance:</strong> ${rest.distance}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>`
-                                )
-                                .join('')}
-                        </div>
-                    `;
+                    // Create mock order for the selected meal type
+                    const mockOrder = {
+                        restaurant: closestRestaurant.name,
+                        meal: mealType,
+                        order_time: new Date().toLocaleTimeString(),
+                        food_item: `Mock ${mealType} Dish`,
+                        status: 'Pending'
+                        //updateOrderLog(mockOrder);
+                    };
 
-                    // Display the mock orders log with delays
-                    const logBox = document.getElementById('mock-orders-log');
-                    logBox.innerHTML = `<h4>Mock Orders</h4>`;
-                    data.mock_orders.forEach((order, index) => {
+                    // Log the order
+                    logOrder(mockOrder);
+                    updateOrderLog(mockOrder);
+
+                    // Simulate order processing delay
+                    setTimeout(() => {
+                        mockOrder.status = 'Processing';
+                        updateOrderLog(mockOrder);
+
+                        const randomProcessingTime = Math.floor(Math.random() * 5) + 3; // Random 3-7 seconds
                         setTimeout(() => {
-                            const orderLogEntry = document.createElement('div');
-                            orderLogEntry.innerHTML = `
-                                <div><strong>Restaurant:</strong> ${order.restaurant}</div>
-                                <div><strong>Order Time:</strong> ${order.order_time}</div>
-                                <div><strong>Food Item:</strong> ${order.food_item}</div>
-                                <div><strong>Quantity:</strong> ${order.quantity}</div>
-                                <div><strong>Status:</strong> <span class="text-warning">Pending</span></div>
-                                <hr>
-                            `;
-                            logBox.appendChild(orderLogEntry);
-
-                            // After a 2-second delay, change status to "Processing"
-                            setTimeout(() => {
-                                orderLogEntry.querySelector('span').textContent = 'Processing...';
-                                orderLogEntry.querySelector('span').classList.remove('text-warning');
-                                orderLogEntry.querySelector('span').classList.add('text-info');
-                            }, 2000);
-
-                            // After a random time (3-7 seconds), mark as "Completed"
-                            const processingTime = Math.floor(Math.random() * 5) + 3; // Random delay between 3 and 7 seconds
-                            setTimeout(() => {
-                                orderLogEntry.querySelector('span').textContent = 'Completed';
-                                orderLogEntry.querySelector('span').classList.remove('text-info');
-                                orderLogEntry.querySelector('span').classList.add('text-success');
-                            }, 2000 + processingTime * 1000); // 2 seconds + random processing time
-                        }, index * 2000); // Delay each order log by 2 seconds for each order
-                    });
+                            mockOrder.status = 'Completed';
+                            updateOrderLog(mockOrder);
+                        }, randomProcessingTime * 1000);
+                    }, 2000); // 2-second initial delay
                 })
                 .catch(error => console.error('Error:', error));
+        }
+
+        // Log the initial order
+        function logOrder(order) {
+            const logBox = document.getElementById('mock-orders-log');
+            const orderLogEntry = document.createElement('div');
+            orderLogEntry.className = 'order-log';
+            orderLogEntry.innerHTML = `
+                <div><strong>Restaurant:</strong> ${order.restaurant}</div>
+                <div><strong>Meal:</strong> ${order.meal}</div>
+                <div><strong>Order Time:</strong> ${order.order_time}</div>
+                <div><strong>Food Item:</strong> ${order.food_item}</div>
+                <div><strong>Status:</strong> <span class="order-status">${order.status}</span></div>
+                <hr>
+            `;
+            logBox.appendChild(orderLogEntry);
+        }
+
+        // Update the order status in the log
+        function updateOrderLog(order) {
+            const logBox = document.getElementById('mock-orders-log');
+            const lastLogEntry = logBox.lastElementChild.previousElementSibling; // Get the last logged order
+            const statusSpan = lastLogEntry.querySelector('.order-status');
+            statusSpan.textContent = order.status;
+            statusSpan.className = `order-status text-${getStatusClass(order.status)}`;
+        }
+
+        // Helper to determine the status class
+        function getStatusClass(status) {
+            if (status === 'Pending') return 'warning';
+            if (status === 'Processing') return 'info';
+            if (status === 'Completed') return 'success';
+            return 'secondary';
         }
     </script>
 </body>
